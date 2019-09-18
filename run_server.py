@@ -60,33 +60,37 @@ def upload_catalog_files():
         return json.dumps({'status': 'error', 'message': str(err)})
 
 
-@app.route('/process-catalog-resumes', methods=['POST'])
+@app.route('/extract-catalog-resumes-data', methods=['POST'])
 def process_catalog_files():
-    req_data = request.get_json()
-    user_id = ObjectId(str(req_data['user_id']))
-    catalog_name = str(req_data['catalog'])
-    user = validate_user(user_id)
-    if user is None:
-        response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
-        return json.dumps(response)
+    try:
+        req_data = request.get_json()
+        user_id = ObjectId(str(req_data['user_id']))
+        catalog_name = str(req_data['catalog'])
+        user = validate_user(user_id)
+        if user is None:
+            response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
+            return json.dumps(response)
 
-    user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "name": catalog_name})
-    catalog_resumes = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id'], 'is_entity_extracted': False})
-    nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
-    for file_doc in catalog_resumes:
-        file_full_path = os.path.join(UPLOAD_FILE_PATH, str(file_doc["catalog"]), file_doc["file_name"])
-        file_type = file_doc['file_name'].rsplit('.', 1)[1].lower()
-        if file_type == "txt":
-            file_data = get_text_from_text_file(file_full_path)
-        elif file_type == "pdf":
-            file_data = extract_text_from_pdf_file(file_full_path)
-        elif file_type == "docx":
-            file_data = get_text_from_docx_file(file_full_path)
-        entity_data = nlp_obj.get_entities(text=file_data)
-        entity_data = json.loads(entity_data)
-        entity_data['is_entity_extracted'] = True
-        CATALOG_FILES_COL.update({"_id": file_doc['_id']}, {"$set": entity_data})
-    return 'processed'
+        user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "name": catalog_name})
+        catalog_resumes = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id'], 'is_entity_extracted': False})
+        nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
+        for file_doc in catalog_resumes:
+            file_full_path = os.path.join(UPLOAD_FILE_PATH, str(file_doc["catalog"]), file_doc["file_name"])
+            file_type = file_doc['file_name'].rsplit('.', 1)[1].lower()
+            if file_type == "txt":
+                file_data = get_text_from_text_file(file_full_path)
+            elif file_type == "pdf":
+                file_data = extract_text_from_pdf_file(file_full_path)
+            elif file_type == "docx":
+                file_data = get_text_from_docx_file(file_full_path)
+            entity_data = nlp_obj.get_entities(text=file_data)
+            entity_data = json.loads(entity_data)
+            entity_data['is_entity_extracted'] = True
+            CATALOG_FILES_COL.update({"_id": file_doc['_id']}, {"$set": entity_data})
+        return json.dumps({'status': 'success',
+                           'message': 'Data extracted from "{}" catalog files'.format(catalog_name)})
+    except Exception as err:
+        return json.dumps({'status': 'error', 'message': str(err)})
 
 
 @app.route('/get-catalog-skills', methods=["POST"])
