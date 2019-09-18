@@ -1,1 +1,2 @@
-# Resume-Ranking-API
+# ResumeRanking
+Ranking the resume based on JD
