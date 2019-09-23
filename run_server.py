@@ -151,6 +151,9 @@ def get_catalog_files():
             return json.dumps(response)
         user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
         catalog_resume = list(CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}))
+        for file in catalog_resume:
+            if 'created_date' in file.keys():
+                file["created_date"] = file["created_date"].strftime("%d-%m-%Y")
         response = {"status": "success", "files": catalog_resume}
     except Exception as err:
         response = {
@@ -166,11 +169,15 @@ def profile_shortlist():
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
         catalog_name = str(req_data['catalog'])
-        min_experience = float(req_data['min_exp'])
-        max_experience = float(req_data['max_exp'])
+        min_experience = req_data['min_exp']
+        max_experience = req_data['max_exp']
         required_skills = list(req_data['req_skills'])
         optional_skills = list(req_data['opt_skills'])
         qualifications = list(req_data['qualifications'])
+        if min_experience == 0 or min_experience is None:
+            min_experience = None
+        if max_experience == 0 or max_experience is None:
+            max_experience = None
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
@@ -212,6 +219,29 @@ def download_file():
             "message": "File does not exist."
         }
     return json.dumps(response)
+
+
+@app.route('/get-catalog-details', methods=["POST"])
+def get_catalog_details():
+    try:
+        req_data = request.get_json()
+        user_id = ObjectId(str(req_data['user_id']))
+        user = validate_user(user_id)
+        if user is None:
+            response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
+            return json.dumps(response)
+        user_catalogs = list(USER_CATALOGS_COL.find({'user': user['_id']}, {"user": 0}))
+        for catalog in user_catalogs:
+            catalog["total_files"] = len(list(CATALOG_FILES_COL.find({'catalog': catalog['_id']})))
+            if 'created_date' in catalog.keys():
+                catalog["created_date"] = catalog["created_date"].strftime("%d-%m-%Y")
+        response = {"status": "success", "catalogs": list(user_catalogs)}
+    except Exception as err:
+        response = {
+            "status": "error",
+            "message": str(err)
+        }
+    return json.dumps(response, default=str)
 
 
 @app.route('/activate_deactivate_file', methods=["POST"])

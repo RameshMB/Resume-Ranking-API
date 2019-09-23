@@ -95,26 +95,30 @@ def shortlist_catalog_profiles(user_id, catalog_id, min_exp, max_exp, req_skills
                 continue
             if isinstance(file["Years_of_Experience"], list):
                 continue
-            if min_exp <= file["Years_of_Experience"] <= max_exp:
-                file['matched_req_skills'] = list(set(req_skills).intersection(set(file["Skills"])))
-                if not file['matched_req_skills']:
+            if min_exp and max_exp:
+                if not min_exp <= file["Years_of_Experience"] <= max_exp:
                     continue
-                file['req_skill_match_score'] = len(file['matched_req_skills']) * points_per_req_skill
-                if qualification is not None and "Degree" in file.keys():
-                    file['match_qualification'] = list(set(qualification).intersection(set(file["Degree"])))
-                if opt_skills is not None:
-                    file['matched_opt_skills'] = list(set(opt_skills).intersection(set(file["Skills"])))
-                    file['opt_skill_match_score'] = len(file['matched_opt_skills']) * points_per_opt_skill
-                file['Total_Match_Score'] = 0
-                if req_skills and opt_skills:
-                    file['Total_Match_Score'] = ((file['req_skill_match_score'] + file['opt_skill_match_score'])/(
-                            req_skills_score + opt_skills_score)) * 100.0
-                elif req_skills and not opt_skills:
-                    file['Total_Match_Score'] = (file['req_skill_match_score'] / req_skills_score) * 100.0
-                file['Total_Match_Score'] = round(file['Total_Match_Score'], 2)
-                file['download_url'] = "http://localhost:5000/download-resume?user_id={}&catalog_id={}&file_id={}".format(
-                    str(user_id), str(file["catalog"]), str(file["_id"]))
-                matched_files.append(file)
+            file['matched_req_skills'] = list(set(req_skills).intersection(set(file["Skills"])))
+            if not file['matched_req_skills']:
+                continue
+            file['req_skill_match_score'] = len(file['matched_req_skills']) * points_per_req_skill
+            if qualification is not None and "Degree" in file.keys():
+                file['match_qualification'] = list(set(qualification).intersection(set(file["Degree"])))
+            if opt_skills is not None:
+                file['matched_opt_skills'] = list(set(opt_skills).intersection(set(file["Skills"])))
+                file['opt_skill_match_score'] = len(file['matched_opt_skills']) * points_per_opt_skill
+            file['Total_Match_Score'] = 0
+            if req_skills and opt_skills:
+                file['Total_Match_Score'] = ((file['req_skill_match_score'] + file['opt_skill_match_score'])/(
+                        req_skills_score + opt_skills_score)) * 100.0
+            elif req_skills and not opt_skills:
+                file['Total_Match_Score'] = (file['req_skill_match_score'] / req_skills_score) * 100.0
+            file['Total_Match_Score'] = round(file['Total_Match_Score'], 2)
+            file['download_url'] = "http://localhost:5000/download-resume?user_id={}&catalog_id={}&file_id={}".format(
+                str(user_id), str(file["catalog"]), str(file["_id"]))
+            if 'created_date' in file.keys():
+                file["created_date"] = file["created_date"].strftime("%d-%m-%Y")
+            matched_files.append(file)
         matched_files = sorted(matched_files, key=lambda i: i['Total_Match_Score'], reverse=True)
         return matched_files
     except Exception as err:
