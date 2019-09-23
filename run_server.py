@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 
 from bson import ObjectId
 from flask import Flask, request, send_file
@@ -154,6 +155,8 @@ def get_catalog_files():
         for file in catalog_resume:
             if 'created_date' in file.keys():
                 file["created_date"] = file["created_date"].strftime("%d-%m-%Y")
+            file['download_url'] = "http://localhost:5000/download-resume?user_id={}&catalog_id={}&file_id={}".format(
+                str(user_id), str(file["catalog"]), str(file["_id"]))
         response = {"status": "success", "files": catalog_resume}
     except Exception as err:
         response = {
@@ -236,6 +239,72 @@ def get_catalog_details():
             if 'created_date' in catalog.keys():
                 catalog["created_date"] = catalog["created_date"].strftime("%d-%m-%Y")
         response = {"status": "success", "catalogs": list(user_catalogs)}
+    except Exception as err:
+        response = {
+            "status": "error",
+            "message": str(err)
+        }
+    return json.dumps(response, default=str)
+
+
+@app.route('/delete-catalog', methods=["POST"])
+def delete_user_catalog():
+    try:
+        req_data = request.get_json()
+        user_id = ObjectId(str(req_data['user_id']))
+        catalog_name = str(req_data['catalog'])
+        user = validate_user(user_id)
+        if user is None:
+            response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
+            return json.dumps(response)
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        if user_cat_col:
+            USER_CATALOGS_COL.delete_one({"_id": user_cat_col["_id"]})
+            CATALOG_FILES_COL.delete_many({"catalog": user_cat_col["_id"]})
+            dir_path = os.path.join(UPLOAD_FILE_PATH, str(user_cat_col["_id"]))
+            if os.path.exists(dir_path) and os.path.isdir(dir_path):
+                shutil.rmtree(dir_path)
+            response = {"status": "success", "message": "Catalog '{}' deleted successfully".format(catalog_name)}
+        else:
+            response = {"status": "error", "message": "Catalog '{}' does not exist.".format(user_id)}
+            return json.dumps(response)
+    except Exception as err:
+        response = {
+            "status": "error",
+            "message": str(err)
+        }
+    return json.dumps(response, default=str)
+
+
+@app.route('/delete-catalog-file', methods=["POST"])
+def delete_catalog_file():
+    try:
+        req_data = request.get_json()
+        user_id = ObjectId(str(req_data['user_id']))
+        catalog_name = str(req_data['catalog'])
+        file_id = ObjectId(str(req_data['file_id']))
+        user = validate_user(user_id)
+        if user is None:
+            response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
+            return json.dumps(response)
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        if user_cat_col:
+            file_doc = CATALOG_FILES_COL.find_one({"_id": file_id, "catalog": user_cat_col["_id"]})
+            if file_doc:
+                file_path = os.path.join(UPLOAD_FILE_PATH, str(user_cat_col["_id"]), file_doc["file_name"])
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    CATALOG_FILES_COL.delete_one({"_id": file_doc["_id"]})
+                    response = {"status": "success", "message": "Catalog '{}' deleted successfully".format(catalog_name)}
+                else:
+                    response = {"status": "error",
+                                "message": "File doesn't exist."}
+            else:
+                response = {"status": "error",
+                            "message": "Invalid file id"}
+        else:
+            response = {"status": "error", "message": "Catalog '{}' does not exist.".format(user_id)}
+            return json.dumps(response)
     except Exception as err:
         response = {
             "status": "error",
