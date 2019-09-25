@@ -109,9 +109,13 @@ class TrainModel:
                     except ValueError:
                         pass
             logging.debug(entity)
-            return json.dumps(entity)
         except Exception as err:
             logging.exception('Unable to get entities Error:{0}'.format(str(err)))
+        for lbl in self.trained_labels():
+            entity[lbl] = entity.get(lbl, [])
+        if entity["Name"]:
+            entity["Name"] = entity["Name"][0]
+        return json.dumps(entity)
 
     def save_model(self, model):
         model_path = os.path.join(NLP_MODEL_Path, model)
@@ -123,7 +127,7 @@ class TrainModel:
         logging.info('Saved "{0}" model to "{1}"'.format(model, output_dir))
 
     def trained_labels(self):
-        return self.nlp.entity.move_names
+        return self.nlp.entity.labels
 
 
 def train_model():

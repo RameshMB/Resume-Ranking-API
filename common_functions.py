@@ -96,7 +96,7 @@ def shortlist_catalog_profiles(user_id, catalog_id, min_exp, max_exp, req_skills
             if isinstance(file["Years_of_Experience"], list):
                 continue
             if min_exp and max_exp:
-                if not min_exp <= file["Years_of_Experience"] <= max_exp:
+                if not min_exp <= float(file["Years_of_Experience"]) <= max_exp:
                     continue
             file['matched_req_skills'] = list(set(req_skills).intersection(set(file["Skills"])))
             if not file['matched_req_skills']:

@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import pymongo
 
 from bson import ObjectId
 from flask import Flask, request, send_file
@@ -73,7 +74,7 @@ def process_catalog_files():
             return json.dumps(response)
 
         user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "name": catalog_name})
-        catalog_resumes = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id'], 'is_entity_extracted': False})
+        catalog_resumes = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']})
         nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
         for file_doc in catalog_resumes:
             file_full_path = os.path.join(UPLOAD_FILE_PATH, str(file_doc["catalog"]), file_doc["file_name"])
@@ -151,13 +152,13 @@ def get_catalog_files():
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
         user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
-        catalog_resume = list(CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}))
-        for file in catalog_resume:
+        catalog_resumes = list(CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}).sort([("Name", pymongo.ASCENDING)]))
+        for file in catalog_resumes:
             if 'created_date' in file.keys():
                 file["created_date"] = file["created_date"].strftime("%d-%m-%Y")
             file['download_url'] = "http://localhost:5000/download-resume?user_id={}&catalog_id={}&file_id={}".format(
                 str(user_id), str(file["catalog"]), str(file["_id"]))
-        response = {"status": "success", "files": catalog_resume}
+        response = {"status": "success", "files": catalog_resumes}
     except Exception as err:
         response = {
             "status": "error",
@@ -179,8 +180,12 @@ def profile_shortlist():
         qualifications = list(req_data['qualifications'])
         if min_experience == 0 or min_experience is None:
             min_experience = None
+        else:
+            min_experience = float(min_experience)
         if max_experience == 0 or max_experience is None:
             max_experience = None
+        else:
+            max_experience = float(max_experience)
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
