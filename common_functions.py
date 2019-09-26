@@ -47,6 +47,8 @@ def validate_catalog(user, catalog_name):
         new_catalog = {
             "user": user['_id'],
             "name": catalog_name,
+            "data_un_extracted_files": 0,
+            "prev_data_extracted_date": None,
             "created_date": datetime.now()
         }
         user_catalog = USER_CATALOGS_COL.insert_one(new_catalog)

@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import pymongo
-
+from datetime import datetime
 from bson import ObjectId
 from flask import Flask, request, send_file
 from flask_cors import CORS
@@ -11,7 +11,7 @@ from common_functions import save_file, update_file, \
     validate_catalog_file, validate_upload_files, validate_user, validate_catalog, shortlist_catalog_profiles
 from extract_text_from_files import extract_text_from_pdf_file, get_text_from_docx_file, get_text_from_text_file
 from ner_model_train import TrainModel
-from settings import UPLOAD_FILE_PATH, USER_CATALOGS_COL, USERS_COL, CATALOG_FILES_COL
+from settings import UPLOAD_FILE_PATH, USER_CATALOGS_COL, CATALOG_FILES_COL
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FILE_PATH
@@ -56,8 +56,15 @@ def upload_catalog_files():
             if up_file_doc['is_entity_extracted']:
                 update_file(up_file_doc)
             save_file(file=up_file, file_doc=up_file_doc)
+        if "data_un_extracted_files" not in user_catalog:
+            USER_CATALOGS_COL.update_one({"_id": user_catalog["_id"]}, {"$set": {
+                "data_un_extracted_files": len(uploaded_files)}})
+        else:
+            USER_CATALOGS_COL.update_one({"_id": user_catalog["_id"]}, {"$set": {
+                "data_un_extracted_files": user_catalog["data_un_extracted_files"] + len(uploaded_files)}})
         return json.dumps({'status': 'success',
-                           'message': '{} file(s) uploaded into "{}" catalog.'.format(len(uploaded_files), catalog_name)})
+                           'message': '{} file(s) uploaded into "{}" catalog.'.format(len(uploaded_files),
+                                                                                      catalog_name)})
     except Exception as err:
         return json.dumps({'status': 'error', 'message': str(err)})
 
@@ -74,7 +81,7 @@ def process_catalog_files():
             return json.dumps(response)
 
         user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "name": catalog_name})
-        catalog_resumes = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']})
+        catalog_resumes = list(CATALOG_FILES_COL.find({"catalog": user_cat_col['_id'], "is_entity_extracted": False}))
         nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
         for file_doc in catalog_resumes:
             file_full_path = os.path.join(UPLOAD_FILE_PATH, str(file_doc["catalog"]), file_doc["file_name"])
@@ -89,6 +96,15 @@ def process_catalog_files():
             entity_data = json.loads(entity_data)
             entity_data['is_entity_extracted'] = True
             CATALOG_FILES_COL.update({"_id": file_doc['_id']}, {"$set": entity_data})
+        print(user_cat_col["data_un_extracted_files"], len(catalog_resumes))
+        if "data_un_extracted_files" in user_cat_col:
+            data_un_extracted_files_count = user_cat_col["data_un_extracted_files"] - len(list(catalog_resumes))
+        else:
+            data_un_extracted_files_count = 0
+        print(data_un_extracted_files_count, 'ssssssssssss')
+        USER_CATALOGS_COL.update_one({"_id": user_cat_col["_id"]},
+                                     {"$set": {"prev_data_extracted_date": datetime.now(),
+                                               "data_un_extracted_files": data_un_extracted_files_count}})
         return json.dumps({'status': 'success',
                            'message': 'Data extracted from "{}" catalog files'.format(catalog_name)})
     except Exception as err:
@@ -152,7 +168,8 @@ def get_catalog_files():
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
         user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
-        catalog_resumes = list(CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}).sort([("Name", pymongo.ASCENDING)]))
+        catalog_resumes = list(
+            CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}).sort([("Name", pymongo.ASCENDING)]))
         for file in catalog_resumes:
             if 'created_date' in file.keys():
                 file["created_date"] = file["created_date"].strftime("%d-%m-%Y")
@@ -300,7 +317,8 @@ def delete_catalog_file():
                 if os.path.exists(file_path):
                     os.remove(file_path)
                     CATALOG_FILES_COL.delete_one({"_id": file_doc["_id"]})
-                    response = {"status": "success", "message": "Catalog '{}' deleted successfully".format(catalog_name)}
+                    response = {"status": "success",
+                                "message": "Catalog '{}' deleted successfully".format(catalog_name)}
                 else:
                     response = {"status": "error",
                                 "message": "File doesn't exist."}
@@ -318,40 +336,42 @@ def delete_catalog_file():
     return json.dumps(response, default=str)
 
 
-@app.route('/activate_deactivate_file', methods=["POST"])
-def activate_deactivate_file():
-    req_data = request.get_json()
-    user_id = ObjectId(str(req_data['user_id']))
-    file_id = ObjectId(str(req_data['file_id']))
-    is_active = req_data['is_active']
-    response = {"status": "", "message": ""}
-    user_doc = USERS_COL.find_one({"_id": user_id})
-    if user_doc:
-        resume_doc = CATALOG_FILES_COL.find_one({"_id": file_id})
-        if resume_doc:
-            resume_catalog_doc = USER_CATALOGS_COL.find_one({"_id": resume_doc["catalog_id"]})
-            if resume_catalog_doc:
-                if resume_catalog_doc["user_id"] == user_doc["_id"]:
-                    CATALOG_FILES_COL.update_one({"_id": resume_doc["_id"]}, {"$set": {"is_active": is_active}})
-                    response["status"] = "success"
-                    response["message"] = "Record updated successfully"
-                else:
-                    response["status"] = "error"
-                    response["message"] = "You are not authorized to update this file"
-            else:
-                response["status"] = "error"
-                response["message"] = "File Catalog '{}' does not exist".format(resume_doc["catalog_id"])
-        else:
-            response["status"] = "error"
-            response["message"] = "File '{}' does not exist".format(file_id)
-    else:
-        response["status"] = "error"
-        response["message"] = "User ID '{}' does not exist".format(user_id)
-
+@app.route('/update-file-data', methods=["POST"])
+def update_file_data():
+    try:
+        req_data = request.get_json()
+        user_id = ObjectId(str(req_data['user_id']))
+        file_id = ObjectId(str(req_data['file_id']))
+        name = req_data['name']
+        email = req_data['email']
+        mobile = req_data['mobile']
+        skills = req_data['skills']
+        qualifications = req_data['qualifications']
+        is_active = req_data['is_active']
+        user = validate_user(user_id)
+        if user is None:
+            response = {"status": "error", "message": "User doesn't exist"}
+            return json.dumps(response)
+        file_doc = CATALOG_FILES_COL.find_one({"_id": file_id})
+        if not file_doc:
+            response = {"status": "error", "message": "Record doesn't exist"}
+            return json.dumps(response)
+        file_catalog = USER_CATALOGS_COL.find_one({"_id": file_doc["catalog"]})
+        if not file_catalog:
+            response = {"status": "error", "message": "File catalog doesn't exist"}
+            return json.dumps(response)
+        if file_catalog["user"] != user["_id"]:
+            response = {"status": "error", "message": "You are not authorized to update this record."}
+            return json.dumps(response)
+        CATALOG_FILES_COL.update_one({"_id": file_doc["_id"]}, {"$set": {
+            "Name": name, "Email_Address": email, "Mobile_No": mobile, "Skills": skills, "Degree": qualifications,
+            "is_active": is_active, "is_manually_updated": True}})
+        response = {"status": "success", "message": "Record updated successfully."}
+    except Exception as err:
+        response = {"status": "error", "message": "Unable to process request.", 'error': str(err)}
     return json.dumps(response)
 
 
 if __name__ == "__main__":
     # app.run(debug=True, host="0.0.0.0", port=5000)
     app.run(debug=True)
-
