@@ -11,13 +11,29 @@ from common_functions import save_file, update_file, \
     validate_catalog_file, validate_upload_files, validate_user, validate_catalog, shortlist_catalog_profiles
 from extract_text_from_files import extract_text_from_pdf_file, get_text_from_docx_file, get_text_from_text_file
 from ner_model_train import TrainModel
-from settings import UPLOAD_FILE_PATH, USER_CATALOGS_COL, CATALOG_FILES_COL
+from settings import UPLOAD_FILE_PATH, USER_CATALOGS_COL, CATALOG_FILES_COL, USERS_COL
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FILE_PATH
 app.config['SECRET_KEY'] = 'kmykey'
 
 CORS(app)
+
+
+@app.route('/login', methods=["POST"])
+def login():
+    try:
+        req_data = request.get_json()
+        username = str(req_data['username'])
+        password = str(req_data['password'])
+        doc_user = USERS_COL.find_one({"username": username, "password": password})
+        if doc_user is None:
+            response = {"status": "error", "message": "Invalid Login credentials"}
+            return json.dumps(response)
+        response = {"status": "success", "user_id": str(doc_user["_id"])}
+    except Exception as err:
+        response = {"status": "error", "message": str(err)}
+    return json.dumps(response)
 
 
 @app.route('/user-catalogs', methods=["POST"])
@@ -29,18 +45,18 @@ def get_user_catalogs():
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_catalogs_docs = USER_CATALOGS_COL.find({"user": user_id})
-        catalog_names = [ct["name"] for ct in user_catalogs_docs]
-        response = {"status": "success", "data": catalog_names}
+        user_catalogs_docs = list(USER_CATALOGS_COL.find({"user": user_id}, {"user": 0}))
+        response = {"status": "success", "data": user_catalogs_docs}
     except Exception as err:
         response = {"status": "error", "message": str(err)}
-    return json.dumps(response)
+    return json.dumps(response, default=str)
 
 
 @app.route('/upload-catalog-resumes', methods=['POST'])
 def upload_catalog_files():
     try:
         user_id = ObjectId(str(request.form.get('user_id')))
+        catalog_id = request.form.get('catalog_id')
         catalog_name = str(request.form.get('catalog_name')).strip()
         uploaded_files = request.files.getlist("file")
         if not validate_upload_files(uploaded_files):
@@ -50,7 +66,13 @@ def upload_catalog_files():
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_catalog = validate_catalog(user=user, catalog_name=catalog_name)
+        if catalog_id == 'null':
+            user_catalog = validate_catalog(user=user, catalog_name=catalog_name, create=True)
+        else:
+            user_catalog = validate_catalog(user=user, catalog_name=catalog_name)
+        if not user_catalog:
+            response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+            return json.dumps(response)
         for up_file in uploaded_files:
             up_file_doc = validate_catalog_file(catalog=user_catalog, file_name=up_file.filename)
             if up_file_doc['is_entity_extracted']:
@@ -74,13 +96,15 @@ def process_catalog_files():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-
-        user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({"user": user["_id"], "_id": catalog_id})
+        if not user_cat_col:
+            response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+            return json.dumps(response)
         catalog_resumes = list(CATALOG_FILES_COL.find({"catalog": user_cat_col['_id'], "is_entity_extracted": False}))
         nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
         for file_doc in catalog_resumes:
@@ -96,17 +120,15 @@ def process_catalog_files():
             entity_data = json.loads(entity_data)
             entity_data['is_entity_extracted'] = True
             CATALOG_FILES_COL.update({"_id": file_doc['_id']}, {"$set": entity_data})
-        print(user_cat_col["data_un_extracted_files"], len(catalog_resumes))
         if "data_un_extracted_files" in user_cat_col:
             data_un_extracted_files_count = user_cat_col["data_un_extracted_files"] - len(list(catalog_resumes))
         else:
             data_un_extracted_files_count = 0
-        print(data_un_extracted_files_count, 'ssssssssssss')
         USER_CATALOGS_COL.update_one({"_id": user_cat_col["_id"]},
                                      {"$set": {"prev_data_extracted_date": datetime.now(),
                                                "data_un_extracted_files": data_un_extracted_files_count}})
         return json.dumps({'status': 'success',
-                           'message': 'Data extracted from "{}" catalog files'.format(catalog_name)})
+                           'message': 'Data extracted from "{}" catalog files'.format(user_cat_col["name"])})
     except Exception as err:
         return json.dumps({'status': 'error', 'message': str(err)})
 
@@ -116,12 +138,15 @@ def get_catalog_skills():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
+        if not user_cat_col:
+            response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+            return json.dumps(response)
         catalog_resume = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']})
         skills = catalog_resume.distinct("Skills")
         skills.sort()
@@ -139,12 +164,15 @@ def get_catalog_degrees():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
+        if not user_cat_col:
+            response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+            return json.dumps(response)
         catalog_resume = CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']})
         degree = catalog_resume.distinct("Degree")
         degree.sort()
@@ -162,12 +190,15 @@ def get_catalog_files():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
+        if not user_cat_col:
+            response = {"status": "error", "message": "Invalid catalog id '{}'".format(catalog_id)}
+            return json.dumps(response)
         catalog_resumes = list(
             CATALOG_FILES_COL.find({'catalog': user_cat_col['_id']}).sort([("Name", pymongo.ASCENDING)]))
         for file in catalog_resumes:
@@ -189,7 +220,7 @@ def profile_shortlist():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         min_experience = req_data['min_exp']
         max_experience = req_data['max_exp']
         required_skills = list(req_data['req_skills'])
@@ -207,7 +238,10 @@ def profile_shortlist():
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
+        if not user_cat_col:
+            response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+            return json.dumps(response)
         matched_profiles = shortlist_catalog_profiles(user_id=user["_id"], catalog_id=user_cat_col["_id"],
                                                       min_exp=min_experience, max_exp=max_experience,
                                                       req_skills=required_skills, opt_skills=optional_skills,
@@ -232,9 +266,10 @@ def download_file():
         response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
         return json.dumps(response)
     user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
-    print(user_cat_col)
+    if not user_cat_col:
+        response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
+        return json.dumps(response)
     resume_file = CATALOG_FILES_COL.find_one({"_id": file_id, 'catalog': user_cat_col["_id"]})
-    print(resume_file)
     if resume_file:
         file_path = os.path.join(UPLOAD_FILE_PATH, str(resume_file["catalog"]), resume_file["file_name"])
         return send_file(file_path, as_attachment=True)
@@ -274,19 +309,19 @@ def delete_user_catalog():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
         if user_cat_col:
             USER_CATALOGS_COL.delete_one({"_id": user_cat_col["_id"]})
             CATALOG_FILES_COL.delete_many({"catalog": user_cat_col["_id"]})
             dir_path = os.path.join(UPLOAD_FILE_PATH, str(user_cat_col["_id"]))
             if os.path.exists(dir_path) and os.path.isdir(dir_path):
                 shutil.rmtree(dir_path)
-            response = {"status": "success", "message": "Catalog '{}' deleted successfully".format(catalog_name)}
+            response = {"status": "success", "message": "Catalog '{}' deleted successfully".format(user_cat_col["name"])}
         else:
             response = {"status": "error", "message": "Catalog '{}' does not exist.".format(user_id)}
             return json.dumps(response)
@@ -303,13 +338,13 @@ def delete_catalog_file():
     try:
         req_data = request.get_json()
         user_id = ObjectId(str(req_data['user_id']))
-        catalog_name = str(req_data['catalog'])
+        catalog_id = ObjectId(str(req_data['catalog_id']))
         file_id = ObjectId(str(req_data['file_id']))
         user = validate_user(user_id)
         if user is None:
             response = {"status": "error", "message": "Invalid user_id '{}'".format(user_id)}
             return json.dumps(response)
-        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "name": catalog_name})
+        user_cat_col = USER_CATALOGS_COL.find_one({'user': user["_id"], "_id": catalog_id})
         if user_cat_col:
             file_doc = CATALOG_FILES_COL.find_one({"_id": file_id, "catalog": user_cat_col["_id"]})
             if file_doc:
@@ -318,7 +353,7 @@ def delete_catalog_file():
                     os.remove(file_path)
                     CATALOG_FILES_COL.delete_one({"_id": file_doc["_id"]})
                     response = {"status": "success",
-                                "message": "Catalog '{}' deleted successfully".format(catalog_name)}
+                                "message": "Catalog '{}' deleted successfully".format(user_cat_col["name"])}
                 else:
                     response = {"status": "error",
                                 "message": "File doesn't exist."}
@@ -326,7 +361,7 @@ def delete_catalog_file():
                 response = {"status": "error",
                             "message": "Invalid file id"}
         else:
-            response = {"status": "error", "message": "Catalog '{}' does not exist.".format(user_id)}
+            response = {"status": "error", "message": "Catalog '{}' does not exist.".format(catalog_id)}
             return json.dumps(response)
     except Exception as err:
         response = {

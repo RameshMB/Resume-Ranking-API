@@ -38,22 +38,26 @@ def validate_user(user_id):
     return user
 
 
-def validate_catalog(user, catalog_name):
+def validate_catalog(user, catalog_name, create=False):
     user_catalog = USER_CATALOGS_COL.find_one({
         'user': user['_id'],
         'name': catalog_name
     })
     if not user_catalog:
-        new_catalog = {
-            "user": user['_id'],
-            "name": catalog_name,
-            "data_un_extracted_files": 0,
-            "prev_data_extracted_date": None,
-            "created_date": datetime.now()
-        }
-        user_catalog = USER_CATALOGS_COL.insert_one(new_catalog)
-        new_catalog['_id'] = user_catalog.inserted_id
-        user_catalog = new_catalog
+        if create is True:
+            new_catalog = {
+                "user": user['_id'],
+                "name": catalog_name,
+                "data_un_extracted_files": 0,
+                "prev_data_extracted_date": None,
+                "created_date": datetime.now()
+            }
+            user_catalog = USER_CATALOGS_COL.insert_one(new_catalog)
+            new_catalog['_id'] = user_catalog.inserted_id
+            user_catalog = new_catalog
+            return user_catalog
+        else:
+            return False
     return user_catalog
 
 
