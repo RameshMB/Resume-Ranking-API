@@ -105,7 +105,8 @@ def process_catalog_files():
         if not user_cat_col:
             response = {"status": "error", "message": "Invalid catalog_id '{}'".format(catalog_id)}
             return json.dumps(response)
-        catalog_resumes = list(CATALOG_FILES_COL.find({"catalog": user_cat_col['_id'], "is_entity_extracted": False}))
+        catalog_resumes = list(CATALOG_FILES_COL.find({"catalog": user_cat_col['_id'], "is_entity_extracted": False,
+                                                       "is_manually_updated": False}))
         nlp_obj = TrainModel(model='Resume_Keyword_Extraction')
         for file_doc in catalog_resumes:
             file_full_path = os.path.join(UPLOAD_FILE_PATH, str(file_doc["catalog"]), file_doc["file_name"])
