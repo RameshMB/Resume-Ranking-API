@@ -69,7 +69,8 @@ def validate_catalog_file(catalog, file_name):
             'file_name': file_name,
             'is_active': True,
             'is_entity_extracted': True,
-            'created_date': datetime.now()
+            'created_date': datetime.now(),
+            "is_manually_updated": False
         }
         catalog_resumes = CATALOG_FILES_COL.insert_one(new_catalog_resume_doc)
         new_catalog_resume_doc['_id'] = catalog_resumes.inserted_id
