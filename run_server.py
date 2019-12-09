@@ -20,6 +20,10 @@ app.config['SECRET_KEY'] = 'kmykey'
 CORS(app)
 
 
+@app.route('/', methods=["GET"])
+def login():
+    return "Hello"
+
 @app.route('/login', methods=["POST"])
 def login():
     try:
