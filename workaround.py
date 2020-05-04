@@ -2,8 +2,8 @@ import os
 import json
 
 from settings import CATALOG_FILES_COL, UPLOAD_FILE_PATH
-from ner_model_train import TrainModel
-from extract_text_from_files import get_text_from_docx_file, get_text_from_text_file, extract_text_from_pdf_file
+from ner_model.ner_model_train import TrainModel
+from files.extract_text_from_files import get_text_from_docx_file, get_text_from_text_file, extract_text_from_pdf_file
 
 
 def remove_columns_from_files_docs():

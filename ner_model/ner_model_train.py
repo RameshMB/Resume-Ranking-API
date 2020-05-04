@@ -140,5 +140,5 @@ def train_model():
 if __name__ == '__main__':
     # train_model()
     ner_obj = TrainModel(model='Resume_Keyword_Extraction')
-    print(ner_obj.get_entities(text=open('test.txt', 'r', encoding='utf-8').read()))
+    print(ner_obj.get_entities(text=open('../test.txt', 'r', encoding='utf-8').read()))
     print(ner_obj.trained_labels())

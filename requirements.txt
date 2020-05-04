@@ -1,6 +1,4 @@
 numpy==1.16.4
-pdfminer==20140328
-pdfminer.six==20181108
 Flask==1.1.1
 Flask-Cors==3.0.8
 Flask-PyMongo==2.3.0
@@ -10,4 +8,4 @@ pymongo==3.9.0
 pyPdf==1.13
 requests==2.22.0
 spacy==2.1.6
-
+pdfminer==20191125

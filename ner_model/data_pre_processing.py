@@ -5,7 +5,7 @@ import shutil
 from settings import train_JSON_FilePath
 
 
-logging.info('Validatin json files......')
+logging.info('Validating json files......')
 no_of_files_found = os.listdir(train_JSON_FilePath)
 if not no_of_files_found:
     logging.info('.json files not found.....')

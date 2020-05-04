@@ -7,10 +7,10 @@ from bson import ObjectId
 from flask import Flask, request, send_file
 from flask_cors import CORS
 
-from common_functions import save_file, update_file, \
+from utilities.common_functions import save_file, update_file, \
     validate_catalog_file, validate_upload_files, validate_user, validate_catalog, shortlist_catalog_profiles
-from extract_text_from_files import extract_text_from_pdf_file, get_text_from_docx_file, get_text_from_text_file
-from ner_model_train import TrainModel
+from files.extract_text_from_files import extract_text_from_pdf_file, get_text_from_docx_file, get_text_from_text_file
+from ner_model.ner_model_train import TrainModel
 from settings import UPLOAD_FILE_PATH, USER_CATALOGS_COL, CATALOG_FILES_COL, USERS_COL
 
 app = Flask(__name__)
@@ -413,6 +413,6 @@ def update_file_data():
     return json.dumps(response)
 
 
-if __name__ == "__main__":
-    # app.run(debug=True, host="0.0.0.0", port=5000)
-    app.run(debug=True)
+# if __name__ == "__main__":
+#     # app.run(debug=True, host="0.0.0.0", port=5000)
+app.run(debug=True)
